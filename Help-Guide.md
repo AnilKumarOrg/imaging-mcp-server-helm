@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CAST Imaging MCP Server is a FastMCP server that provides AI-powered code analysis capabilities through the Model Context Protocol (MCP). This Helm chart enables easy deployment and management of the MCP server on Kubernetes clusters, with support for persistent storage, security contexts, and external access.
+This Helm chart enables easy deployment and management of the CAST Imaging MCP server on Kubernetes clusters, with support for persistent storage, security contexts, and external access.
 
 ## Table of Contents
 
@@ -1060,3 +1060,4 @@ spec:
 - ✅ **Reduced Resource Count**: From 5 to 4 Kubernetes resources
 - ✅ **Updated Documentation**: Comprehensive guide reflecting current architecture
 - ✅ **Security Improvements**: Reduced attack surface and simplified permission model
+
