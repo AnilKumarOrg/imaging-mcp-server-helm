@@ -20,17 +20,20 @@ The CAST Imaging MCP Server is a FastMCP server that provides AI-powered code an
 ## Prerequisites
 
 ### Software Requirements
-- **Kubernetes**: Version 1.19+ 
+
+- **Kubernetes**: Version 1.19+
 - **Helm**: Version 3.8+
 - **kubectl**: Configured to access your target cluster
 
 ### Cluster Requirements
+
 - **Storage**: Support for PersistentVolumes with ReadWriteOnce access mode
 - **CPU**: Minimum 500m per pod
 - **Memory**: Minimum 1Gi per pod
-- **Storage**: Minimum 3Gi for persistent data
+- **Storage**: Minimum 2Gi for persistent data
 
 ### Optional Components
+
 - **Istio Service Mesh**: For advanced external access and traffic management
 - **Ingress Controller**: Alternative to Istio for external access
 
@@ -38,35 +41,42 @@ The CAST Imaging MCP Server is a FastMCP server that provides AI-powered code an
 
 ### Quick Start
 
-1. **Add the Chart Repository** (if using a Helm repository):
+1. **Install from Local Chart** (recommended for current deployment):
+
    ```bash
-   helm repo add cast-imaging https://your-helm-repo.com
-   helm repo update
+   # Navigate to the chart directory
+   cd cast-imaging-mcp
+   
+   # Install with default configuration
+   helm install imaging-mcp-server .
    ```
 
-2. **Install with Default Configuration**:
-   ```bash
-   helm install imaging-mcp-server ./cast-imaging-mcp
-   ```
+2. **Install with Custom Configuration**:
 
+   ```bash
+   helm install imaging-mcp-server . -f values-custom.yaml
+   ```
 3. **Install with Custom Configuration**:
+
    ```bash
-   helm install imaging-mcp-server ./cast-imaging-mcp -f values-custom.yaml
+   helm install imaging-mcp-server . -f values-custom.yaml
    ```
 
 ### Environment-Specific Installation
 
 #### For CoreLogic GCP Environment:
+
 ```bash
-helm install imaging-mcp-server ./cast-imaging-mcp \
+helm install imaging-mcp-server . \
   -f values-gcp-corelogic.yaml \
-  --namespace mcp-server \
+  --namespace platform-services-glb-castaip \
   --create-namespace
 ```
 
 #### For Development Environment:
+
 ```bash
-helm install imaging-mcp-server-dev ./cast-imaging-mcp \
+helm install imaging-mcp-server-dev . \
   --set image.tag=latest \
   --set persistence.enabled=false \
   --set resources.requests.cpu=100m \
@@ -74,8 +84,9 @@ helm install imaging-mcp-server-dev ./cast-imaging-mcp \
 ```
 
 #### For Production Environment:
+
 ```bash
-helm install imaging-mcp-server ./cast-imaging-mcp \
+helm install imaging-mcp-server . \
   --set image.tag=3.4.3 \
   --set resources.requests.cpu=1000m \
   --set resources.requests.memory=2Gi \
@@ -91,6 +102,7 @@ helm install imaging-mcp-server ./cast-imaging-mcp \
 The chart supports extensive configuration through values. Here are the key sections:
 
 #### Application Configuration
+
 ```yaml
 # Basic application settings
 image:
@@ -110,6 +122,7 @@ fullnameOverride: "imaging-mcp-server"
 ```
 
 #### Resource Management
+
 ```yaml
 resources:
   limits:
@@ -121,6 +134,7 @@ resources:
 ```
 
 #### Security Context
+
 ```yaml
 podSecurityContext:
   runAsNonRoot: true
@@ -139,34 +153,58 @@ securityContext:
 ```
 
 #### Persistence Configuration
+
 ```yaml
 persistence:
   enabled: true
   storageClassName: "standard-rwo"
   accessMode: ReadWriteOnce
-  size: 3Gi
-  
-  # Storage organization options
-  singleStorage: true  # Recommended: Use one PVC with subdirectories
-  
-  # Legacy separate storage (for backward compatibility)
-  # Set singleStorage: false to enable separate PVCs
-  castStorage:
-    size: 1Gi
-  mcpStorage:
-    size: 1Gi
+  size: 5Gi
 ```
+
+**Note**: The chart now uses a simplified single PVC approach with an init container that creates organized subdirectories for different data types. This provides better resource utilization and easier management compared to separate PVCs.
+
+### Chart Optimizations (v1.1.0-beta1)
+
+This version of the chart has been optimized for better security and simplicity:
+
+#### **Removed Components:**
+
+- **Horizontal Pod Autoscaler (HPA)**: Removed as the MCP server is a stateful application that maintains persistent connections and works best with a fixed replica count.
+- **Custom ServiceAccount**: Removed as the application doesn't require Kubernetes API access. Pods now use the default ServiceAccount for better security.
+
+#### **Simplified Storage:**
+
+- **Single PVC**: Consolidated from multiple PVC options to a single 5Gi PVC with organized subdirectories
+- **Init Container**: Automatically creates required directory structure (`/app/storage/data/` and `/app/storage/logs/`)
+- **Better Resource Utilization**: Single storage allocation instead of multiple smaller PVCs
+
+#### **Security Improvements:**
+
+- **Reduced Attack Surface**: No custom ServiceAccount means no additional Kubernetes API permissions
+- **Default Security Context**: Uses battle-tested default ServiceAccount instead of custom configuration
+
+#### **Deployed Resources:**
+
+The chart now creates exactly **4 Kubernetes resources**:
+1. **Deployment**: Manages the MCP server pod
+2. **Service**: Exposes the application on port 8282
+3. **PersistentVolumeClaim**: Single 5Gi storage volume  
+4. **ReplicaSet**: Created automatically by the Deployment
 
 ### Environment-Specific Values Files
 
 #### values-gcp-corelogic.yaml
+
 Optimized for CoreLogic GCP environment with:
+
 - Single PVC storage configuration
 - Specific naming for service discovery
 - Integration with existing VirtualService
 - GCP-optimized storage classes
 
 #### values-development.yaml (example)
+
 ```yaml
 image:
   tag: latest
@@ -190,6 +228,7 @@ env:
 ```
 
 #### values-production.yaml (example)
+
 ```yaml
 image:
   tag: "3.4.3"
@@ -224,12 +263,13 @@ tolerations:
 ## Deployment Examples
 
 ### Basic Development Deployment
+
 ```bash
 # Create namespace
 kubectl create namespace mcp-dev
 
 # Deploy with minimal resources
-helm install mcp-dev ./cast-imaging-mcp \
+helm install mcp-dev . \
   --namespace mcp-dev \
   --set persistence.enabled=false \
   --set resources.requests.cpu=100m \
@@ -237,12 +277,13 @@ helm install mcp-dev ./cast-imaging-mcp \
 ```
 
 ### Production Deployment with Custom Storage
+
 ```bash
 # Deploy with high availability and performance tuning
-helm install imaging-mcp-server ./cast-imaging-mcp \
+helm install imaging-mcp-server . \
   --namespace production \
   --create-namespace \
-  --set replicaCount=3 \
+  --set replicaCount=1 \
   --set persistence.size=20Gi \
   --set persistence.storageClassName=fast-ssd \
   --set resources.requests.cpu=1000m \
@@ -252,66 +293,52 @@ helm install imaging-mcp-server ./cast-imaging-mcp \
 ```
 
 ### Multi-Environment Deployment
+
 ```bash
 # Development
-helm install mcp-dev ./cast-imaging-mcp -f values-development.yaml -n mcp-dev
+helm install mcp-dev . -f values-development.yaml -n mcp-dev
 
 # Staging  
-helm install mcp-staging ./cast-imaging-mcp -f values-staging.yaml -n mcp-staging
+helm install mcp-staging . -f values-staging.yaml -n mcp-staging
 
 # Production
-helm install mcp-prod ./cast-imaging-mcp -f values-production.yaml -n mcp-production
+helm install mcp-prod . -f values-production.yaml -n mcp-production
 ```
 
 ## Storage Management
 
-### Single PVC Approach (Recommended)
+### Single PVC Approach (Current Implementation)
 
-The chart supports a consolidated storage approach using a single PVC with organized subdirectories:
+The chart uses a consolidated storage approach with a single PVC and organized subdirectories:
 
 ```yaml
 persistence:
   enabled: true
-  singleStorage: true
-  size: 3Gi
+  size: 5Gi
   storageClassName: "standard-rwo"
 ```
 
 **Storage Structure:**
+
 ```
-/persistent-data/
-├── cast/          # CAST application data
-├── mcp/           # MCP server configuration
-└── shared/        # Shared resources
+/app/storage/
+├── data/          # Application data
+├── logs/          # Application logs
+└── lost+found/    # File system recovery
 ```
 
 **Benefits:**
+
 - Simplified storage management
 - Better resource utilization
 - Easier backup and restore
 - Reduced complexity for operators
-
-### Legacy Separate PVC Approach
-
-For backward compatibility, you can still use separate PVCs:
-
-```yaml
-persistence:
-  enabled: true
-  singleStorage: false
-  
-  castStorage:
-    size: 1Gi
-    storageClassName: "standard-rwo"
-    
-  mcpStorage:
-    size: 1Gi
-    storageClassName: "standard-rwo"
-```
+- Single mount point with organized structure
 
 ### Storage Class Examples
 
 #### Google Cloud Platform
+
 ```yaml
 persistence:
   storageClassName: "standard-rwo"    # Standard persistent disk
@@ -319,6 +346,7 @@ persistence:
 ```
 
 #### Amazon EKS
+
 ```yaml
 persistence:
   storageClassName: "gp2"             # General purpose SSD
@@ -326,6 +354,7 @@ persistence:
 ```
 
 #### Azure AKS
+
 ```yaml
 persistence:
   storageClassName: "default"         # Standard managed disk
@@ -335,22 +364,24 @@ persistence:
 ### Backup and Restore
 
 #### Creating Backups
+
 ```bash
 # Create backup of persistent data
-kubectl exec -n mcp-server deployment/imaging-mcp-server -- \
-  tar czf /tmp/mcp-backup.tar.gz /persistent-data
+kubectl exec -n platform-services-glb-castaip deployment/imaging-mcp-server -- \
+  tar czf /tmp/mcp-backup.tar.gz /app/storage
 
 # Copy backup to local machine
-kubectl cp mcp-server/imaging-mcp-server-xxx:/tmp/mcp-backup.tar.gz ./mcp-backup.tar.gz
+kubectl cp platform-services-glb-castaip/imaging-mcp-server-xxx:/tmp/mcp-backup.tar.gz ./mcp-backup.tar.gz
 ```
 
 #### Restoring from Backup
+
 ```bash
 # Copy backup to pod
-kubectl cp ./mcp-backup.tar.gz mcp-server/imaging-mcp-server-xxx:/tmp/
+kubectl cp ./mcp-backup.tar.gz platform-services-glb-castaip/imaging-mcp-server-xxx:/tmp/
 
 # Extract backup
-kubectl exec -n mcp-server deployment/imaging-mcp-server -- \
+kubectl exec -n platform-services-glb-castaip deployment/imaging-mcp-server -- \
   tar xzf /tmp/mcp-backup.tar.gz -C /
 ```
 
@@ -365,6 +396,7 @@ apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
   name: imaging-mcp-server
+  namespace: platform-services-glb-castaip
 spec:
   hosts:
   - imaging-mcp-server.cotsusc1dev.solutions.corelogic.com
@@ -374,7 +406,7 @@ spec:
         prefix: /mcp
     route:
     - destination:
-        host: imaging-mcp-server.mcp-server.svc.cluster.local
+        host: imaging-mcp-server.platform-services-glb-castaip.svc.cluster.local
         port:
           number: 8282
 ```
@@ -422,6 +454,7 @@ kubectl port-forward service/imaging-mcp-server 8282:8282
 The deployment includes comprehensive health checks:
 
 #### Readiness Probe
+
 ```yaml
 readinessProbe:
   tcpSocket:
@@ -433,6 +466,7 @@ readinessProbe:
 ```
 
 #### Liveness Probe
+
 ```yaml
 livenessProbe:
   tcpSocket:
@@ -446,6 +480,7 @@ livenessProbe:
 ### Monitoring Commands
 
 #### Check Pod Status
+
 ```bash
 # View pod status
 kubectl get pods -l app.kubernetes.io/name=cast-imaging-mcp
@@ -455,6 +490,7 @@ kubectl describe pod -l app.kubernetes.io/name=cast-imaging-mcp
 ```
 
 #### View Logs
+
 ```bash
 # View current logs
 kubectl logs -l app.kubernetes.io/name=cast-imaging-mcp
@@ -467,6 +503,7 @@ kubectl logs deployment/imaging-mcp-server -c mcp-server
 ```
 
 #### Check Resource Usage
+
 ```bash
 # View resource usage
 kubectl top pods -l app.kubernetes.io/name=cast-imaging-mcp
@@ -478,6 +515,7 @@ kubectl describe deployment imaging-mcp-server
 ### Service Health Verification
 
 #### Test Service Connectivity
+
 ```bash
 # Test service connectivity from within cluster
 kubectl run test-pod --image=alpine --rm -it -- sh
@@ -486,6 +524,7 @@ kubectl run test-pod --image=alpine --rm -it -- sh
 ```
 
 #### External Health Check
+
 ```bash
 # If using external access
 curl -I https://imaging-mcp-server.cotsusc1dev.solutions.corelogic.com/mcp
@@ -498,6 +537,7 @@ curl -I https://imaging-mcp-server.cotsusc1dev.solutions.corelogic.com/mcp
 #### 1. Pod Stuck in Pending State
 
 **Symptoms:**
+
 ```bash
 kubectl get pods
 NAME                                    READY   STATUS    RESTARTS   AGE
@@ -507,6 +547,7 @@ imaging-mcp-server-xxx                  0/1     Pending   0          5m
 **Possible Causes and Solutions:**
 
 **Insufficient Resources:**
+
 ```bash
 # Check node resources
 kubectl describe nodes
@@ -518,6 +559,7 @@ helm upgrade imaging-mcp-server ./cast-imaging-mcp \
 ```
 
 **Storage Issues:**
+
 ```bash
 # Check PVC status
 kubectl get pvc
@@ -531,6 +573,7 @@ kubectl get storageclass
 #### 2. Container Failing to Start
 
 **Symptoms:**
+
 ```bash
 kubectl get pods
 NAME                                    READY   STATUS             RESTARTS   AGE
@@ -538,6 +581,7 @@ imaging-mcp-server-xxx                  0/1     CrashLoopBackOff   3          5m
 ```
 
 **Debugging Steps:**
+
 ```bash
 # Check container logs
 kubectl logs imaging-mcp-server-xxx
@@ -552,6 +596,7 @@ kubectl describe pod imaging-mcp-server-xxx
 ```
 
 **Permission Issues:**
+
 ```bash
 # Check if security context is preventing file access
 kubectl exec -it imaging-mcp-server-xxx -- ls -la /persistent-data
@@ -564,10 +609,12 @@ helm upgrade imaging-mcp-server ./cast-imaging-mcp \
 #### 3. Service Not Accessible
 
 **Symptoms:**
+
 - Service exists but cannot be reached
 - External access fails
 
 **Debugging Steps:**
+
 ```bash
 # Check service status
 kubectl get service imaging-mcp-server
@@ -581,6 +628,7 @@ kubectl run debug --image=alpine --rm -it -- sh
 ```
 
 **Common Solutions:**
+
 ```bash
 # Check service selector matches pod labels
 kubectl get pods --show-labels
@@ -595,6 +643,7 @@ helm upgrade imaging-mcp-server ./cast-imaging-mcp \
 #### 4. Persistence Issues
 
 **Storage Not Mounting:**
+
 ```bash
 # Check PVC status
 kubectl get pvc
@@ -607,17 +656,19 @@ kubectl describe pvc cast-storage
 ```
 
 **Data Not Persisting:**
+
 ```bash
 # Verify volume mounts
 kubectl describe pod imaging-mcp-server-xxx
 
 # Check if data is written to correct path
-kubectl exec -it imaging-mcp-server-xxx -- ls -la /persistent-data
+kubectl exec -it imaging-mcp-server-xxx -- ls -la /app/storage
 ```
 
 #### 5. External Access Issues
 
 **Istio VirtualService Not Working:**
+
 ```bash
 # Check VirtualService configuration
 kubectl get virtualservice imaging-mcp-server -o yaml
@@ -632,6 +683,7 @@ kubectl port-forward service/imaging-mcp-server 8282:8282
 ### Debug Commands Reference
 
 #### Comprehensive Status Check
+
 ```bash
 #!/bin/bash
 echo "=== CAST Imaging MCP Server Status ==="
@@ -657,6 +709,7 @@ kubectl top pods -l app.kubernetes.io/name=cast-imaging-mcp 2>/dev/null || echo 
 ```
 
 #### Log Collection Script
+
 ```bash
 #!/bin/bash
 NAMESPACE=${1:-default}
@@ -693,12 +746,14 @@ echo "Diagnostics collected in: $OUTPUT_DIR"
 ### Upgrade Process
 
 #### 1. Check Current Version
+
 ```bash
 helm list
 helm get values imaging-mcp-server
 ```
 
 #### 2. Backup Current Configuration
+
 ```bash
 # Export current values
 helm get values imaging-mcp-server > current-values.yaml
@@ -711,26 +766,30 @@ kubectl exec deployment/imaging-mcp-server -- \
 #### 3. Perform Upgrade
 
 **Standard Upgrade:**
+
 ```bash
-helm upgrade imaging-mcp-server ./cast-imaging-mcp
+helm upgrade imaging-mcp-server .
 ```
 
 **Upgrade with New Values:**
+
 ```bash
-helm upgrade imaging-mcp-server ./cast-imaging-mcp \
+helm upgrade imaging-mcp-server . \
   -f values-gcp-corelogic.yaml \
   --set image.tag=3.4.4
 ```
 
 **Upgrade with Wait and Timeout:**
+
 ```bash
-helm upgrade imaging-mcp-server ./cast-imaging-mcp \
+helm upgrade imaging-mcp-server . \
   --wait \
   --timeout=10m \
   --atomic  # Rollback on failure
 ```
 
 #### 4. Verify Upgrade
+
 ```bash
 # Check rollout status
 kubectl rollout status deployment/imaging-mcp-server
@@ -756,19 +815,21 @@ helm rollback imaging-mcp-server 2
 ### Version-Specific Upgrade Notes
 
 #### Upgrading from 1.0.x to 1.1.x
+
 - **Breaking Change**: Storage configuration unified to single PVC by default
 - **Action Required**: Review storage settings in values file
 - **Migration**: Data automatically preserved during upgrade
 
 #### Upgrading Image Versions
+
 ```bash
 # Always verify image compatibility
-helm upgrade imaging-mcp-server ./cast-imaging-mcp \
+helm upgrade imaging-mcp-server . \
   --set image.tag=3.4.4 \
   --dry-run
 
 # Apply upgrade
-helm upgrade imaging-mcp-server ./cast-imaging-mcp \
+helm upgrade imaging-mcp-server . \
   --set image.tag=3.4.4
 ```
 
@@ -777,15 +838,17 @@ helm upgrade imaging-mcp-server ./cast-imaging-mcp \
 ### Clean Uninstall Process
 
 #### 1. Backup Data (Optional)
+
 ```bash
 # Create final backup
 kubectl exec deployment/imaging-mcp-server -- \
-  tar czf /tmp/final-backup.tar.gz /persistent-data
+  tar czf /tmp/final-backup.tar.gz /app/storage
 
-kubectl cp mcp-server/imaging-mcp-server-xxx:/tmp/final-backup.tar.gz ./final-backup.tar.gz
+kubectl cp platform-services-glb-castaip/imaging-mcp-server-xxx:/tmp/final-backup.tar.gz ./final-backup.tar.gz
 ```
 
 #### 2. Remove Helm Release
+
 ```bash
 # Standard uninstall
 helm uninstall imaging-mcp-server
@@ -795,25 +858,27 @@ helm uninstall imaging-mcp-server --namespace mcp-server
 ```
 
 #### 3. Clean Up Persistent Volumes (if desired)
+
 ```bash
 # List PVCs (these are NOT automatically deleted)
 kubectl get pvc
 
-# Delete PVCs to free storage
-kubectl delete pvc cast-storage
-kubectl delete pvc mcp-storage
+# Delete PVC to free storage
+kubectl delete pvc imaging-mcp-server-storage
 
 # Or delete all PVCs with the app label
 kubectl delete pvc -l app.kubernetes.io/name=cast-imaging-mcp
 ```
 
 #### 4. Clean Up Namespace (if dedicated)
+
 ```bash
 # If using dedicated namespace
 kubectl delete namespace mcp-server
 ```
 
 #### 5. Verify Clean Removal
+
 ```bash
 # Check for remaining resources
 kubectl get all -l app.kubernetes.io/name=cast-imaging-mcp
@@ -823,15 +888,17 @@ kubectl get pvc -l app.kubernetes.io/name=cast-imaging-mcp
 ### Selective Cleanup
 
 #### Keep Data, Remove Application
+
 ```bash
 # Uninstall but keep PVCs
 helm uninstall imaging-mcp-server
 
-# PVCs remain for future reinstallation
-kubectl get pvc  # Should still show cast-storage and mcp-storage
+# PVC remains for future reinstallation
+kubectl get pvc  # Should still show imaging-mcp-server-storage
 ```
 
 #### Remove Everything
+
 ```bash
 # Complete removal including data
 helm uninstall imaging-mcp-server
@@ -843,6 +910,7 @@ kubectl delete pvc -l app.kubernetes.io/name=cast-imaging-mcp
 ### Multi-Environment Setup
 
 #### Directory Structure
+
 ```
 environments/
 ├── development/
@@ -857,6 +925,7 @@ environments/
 ```
 
 #### Deployment Script
+
 ```bash
 #!/bin/bash
 ENVIRONMENT=${1:-development}
@@ -864,7 +933,7 @@ NAMESPACE="mcp-${ENVIRONMENT}"
 
 echo "Deploying to ${ENVIRONMENT} environment..."
 
-helm upgrade --install "mcp-${ENVIRONMENT}" ./cast-imaging-mcp \
+helm upgrade --install "mcp-${ENVIRONMENT}" . \
   -f "environments/${ENVIRONMENT}/values-${ENVIRONMENT}.yaml" \
   --namespace "${NAMESPACE}" \
   --create-namespace \
@@ -874,6 +943,7 @@ helm upgrade --install "mcp-${ENVIRONMENT}" ./cast-imaging-mcp \
 ### Security Hardening
 
 #### Enhanced Security Context
+
 ```yaml
 podSecurityContext:
   runAsNonRoot: true
@@ -896,6 +966,7 @@ securityContext:
 ```
 
 #### Network Policies
+
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -928,6 +999,7 @@ spec:
 ## Support and Resources
 
 ### Documentation Links
+
 - [CAST Imaging Official Documentation](https://doc.castsoftware.com/display/IMAGING)
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
@@ -936,11 +1008,13 @@ spec:
 ### Getting Help
 
 #### Internal Support (CoreLogic)
+
 - **Slack**: #cast-imaging-support
 - **Email**: imaging-support@corelogic.com
 - **Jira**: Create ticket in CAST-IMAGING project
 
 #### External Resources
+
 - **CAST Support**: [https://support.castsoftware.com](https://support.castsoftware.com)
 - **Kubernetes Community**: [https://kubernetes.slack.com](https://kubernetes.slack.com)
 - **Helm Community**: [https://helm.sh/community](https://helm.sh/community)
@@ -948,6 +1022,7 @@ spec:
 ### Best Practices Summary
 
 #### Production Deployment Checklist
+
 - [ ] Use specific image tags (not `latest`)
 - [ ] Configure appropriate resource limits and requests
 - [ ] Enable persistence with adequate storage size
@@ -961,6 +1036,7 @@ spec:
 - [ ] Test disaster recovery procedures
 
 #### Monitoring and Maintenance
+
 - Monitor resource usage and scale as needed
 - Regularly update to latest stable versions
 - Monitor logs for errors and performance issues
@@ -973,5 +1049,14 @@ spec:
 
 **Chart Version**: 1.1.0-beta1  
 **Application Version**: 3.4.3  
-**Last Updated**: $(date +%Y-%m-%d)  
+**Last Updated**: September 18, 2025  
 **Maintainer**: CAST Imaging Team <imaging-support@corelogic.com>
+
+### Recent Changes (v1.1.0-beta1)
+
+- ✅ **Removed HPA**: Eliminated Horizontal Pod Autoscaler (inappropriate for stateful MCP server)
+- ✅ **Removed Custom ServiceAccount**: Now uses default ServiceAccount for better security
+- ✅ **Simplified Storage**: Single PVC approach with init container for directory organization
+- ✅ **Reduced Resource Count**: From 5 to 4 Kubernetes resources
+- ✅ **Updated Documentation**: Comprehensive guide reflecting current architecture
+- ✅ **Security Improvements**: Reduced attack surface and simplified permission model
