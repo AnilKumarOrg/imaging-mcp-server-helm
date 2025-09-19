@@ -46,54 +46,15 @@ This Helm chart enables easy deployment and management of the CAST Imaging MCP s
    ```bash
    # Navigate to the chart directory
    cd cast-imaging-mcp
-   
+
    # Install with default configuration
    helm install imaging-mcp-server .
    ```
-
 2. **Install with Custom Configuration**:
 
    ```bash
    helm install imaging-mcp-server . -f values-custom.yaml
    ```
-3. **Install with Custom Configuration**:
-
-   ```bash
-   helm install imaging-mcp-server . -f values-custom.yaml
-   ```
-
-### Environment-Specific Installation
-
-#### For CoreLogic GCP Environment:
-
-```bash
-helm install imaging-mcp-server . \
-  -f values-gcp-corelogic.yaml \
-  --namespace platform-services-glb-castaip \
-  --create-namespace
-```
-
-#### For Development Environment:
-
-```bash
-helm install imaging-mcp-server-dev . \
-  --set image.tag=latest \
-  --set persistence.enabled=false \
-  --set resources.requests.cpu=100m \
-  --set resources.requests.memory=512Mi
-```
-
-#### For Production Environment:
-
-```bash
-helm install imaging-mcp-server . \
-  --set image.tag=3.4.3 \
-  --set resources.requests.cpu=1000m \
-  --set resources.requests.memory=2Gi \
-  --set resources.limits.cpu=2000m \
-  --set resources.limits.memory=4Gi \
-  --set persistence.size=10Gi
-```
 
 ## Configuration
 
@@ -168,35 +129,26 @@ persistence:
 
 This version of the chart has been optimized for better security and simplicity:
 
-#### **Removed Components:**
-
-- **Horizontal Pod Autoscaler (HPA)**: Removed as the MCP server is a stateful application that maintains persistent connections and works best with a fixed replica count.
-- **Custom ServiceAccount**: Removed as the application doesn't require Kubernetes API access. Pods now use the default ServiceAccount for better security.
-
 #### **Simplified Storage:**
 
 - **Single PVC**: Consolidated from multiple PVC options to a single 5Gi PVC with organized subdirectories
 - **Init Container**: Automatically creates required directory structure (`/app/storage/data/` and `/app/storage/logs/`)
 - **Better Resource Utilization**: Single storage allocation instead of multiple smaller PVCs
 
-#### **Security Improvements:**
-
-- **Reduced Attack Surface**: No custom ServiceAccount means no additional Kubernetes API permissions
-- **Default Security Context**: Uses battle-tested default ServiceAccount instead of custom configuration
-
 #### **Deployed Resources:**
 
 The chart now creates exactly **4 Kubernetes resources**:
+
 1. **Deployment**: Manages the MCP server pod
 2. **Service**: Exposes the application on port 8282
-3. **PersistentVolumeClaim**: Single 5Gi storage volume  
+3. **PersistentVolumeClaim**: Single Gi storage volume
 4. **ReplicaSet**: Created automatically by the Deployment
 
 ### Environment-Specific Values Files
 
-#### values-gcp-corelogic.yaml
+#### values-gcp-customername.yaml
 
-Optimized for CoreLogic GCP environment with:
+Optimized for customer GCP environment with:
 
 - Single PVC storage configuration
 - Specific naming for service discovery
@@ -227,39 +179,6 @@ env:
     value: "DEBUG"
 ```
 
-#### values-production.yaml (example)
-
-```yaml
-image:
-  tag: "3.4.3"
-  pullPolicy: IfNotPresent
-
-replicaCount: 2
-
-persistence:
-  enabled: true
-  size: 10Gi
-  storageClassName: "fast-ssd"
-
-resources:
-  requests:
-    cpu: 1000m
-    memory: 2Gi
-  limits:
-    cpu: 2000m
-    memory: 4Gi
-
-# High availability and performance
-nodeSelector:
-  node-type: "compute-optimized"
-
-tolerations:
-  - key: "dedicated"
-    operator: "Equal"
-    value: "mcp-server"
-    effect: "NoSchedule"
-```
-
 ## Deployment Examples
 
 ### Basic Development Deployment
@@ -274,35 +193,6 @@ helm install mcp-dev . \
   --set persistence.enabled=false \
   --set resources.requests.cpu=100m \
   --set resources.requests.memory=512Mi
-```
-
-### Production Deployment with Custom Storage
-
-```bash
-# Deploy with high availability and performance tuning
-helm install imaging-mcp-server . \
-  --namespace production \
-  --create-namespace \
-  --set replicaCount=1 \
-  --set persistence.size=20Gi \
-  --set persistence.storageClassName=fast-ssd \
-  --set resources.requests.cpu=1000m \
-  --set resources.requests.memory=2Gi \
-  --set resources.limits.cpu=2000m \
-  --set resources.limits.memory=4Gi
-```
-
-### Multi-Environment Deployment
-
-```bash
-# Development
-helm install mcp-dev . -f values-development.yaml -n mcp-dev
-
-# Staging  
-helm install mcp-staging . -f values-staging.yaml -n mcp-staging
-
-# Production
-helm install mcp-prod . -f values-production.yaml -n mcp-production
 ```
 
 ## Storage Management
@@ -326,14 +216,6 @@ persistence:
 ├── logs/          # Application logs
 └── lost+found/    # File system recovery
 ```
-
-**Benefits:**
-
-- Simplified storage management
-- Better resource utilization
-- Easier backup and restore
-- Reduced complexity for operators
-- Single mount point with organized structure
 
 ### Storage Class Examples
 
@@ -361,33 +243,9 @@ persistence:
   # or "managed-premium" for premium SSD
 ```
 
-### Backup and Restore
-
-#### Creating Backups
-
-```bash
-# Create backup of persistent data
-kubectl exec -n platform-services-glb-castaip deployment/imaging-mcp-server -- \
-  tar czf /tmp/mcp-backup.tar.gz /app/storage
-
-# Copy backup to local machine
-kubectl cp platform-services-glb-castaip/imaging-mcp-server-xxx:/tmp/mcp-backup.tar.gz ./mcp-backup.tar.gz
-```
-
-#### Restoring from Backup
-
-```bash
-# Copy backup to pod
-kubectl cp ./mcp-backup.tar.gz platform-services-glb-castaip/imaging-mcp-server-xxx:/tmp/
-
-# Extract backup
-kubectl exec -n platform-services-glb-castaip deployment/imaging-mcp-server -- \
-  tar xzf /tmp/mcp-backup.tar.gz -C /
-```
-
 ## External Access
 
-### Using Istio VirtualService (Recommended for CoreLogic)
+### Using Istio VirtualService
 
 If you have Istio service mesh installed, you can use VirtualService for external access:
 
@@ -396,17 +254,17 @@ apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
   name: imaging-mcp-server
-  namespace: platform-services-glb-castaip
+  namespace: cast-imaging-mcp-server
 spec:
   hosts:
-  - imaging-mcp-server.cotsusc1dev.solutions.corelogic.com
+  - imaging-mcp-server.dev.solutions.cast.com
   http:
   - match:
     - uri:
         prefix: /mcp
     route:
     - destination:
-        host: imaging-mcp-server.platform-services-glb-castaip.svc.cluster.local
+        host: imaging-mcp-server.dev.solution.cluster.local
         port:
           number: 8282
 ```
@@ -526,8 +384,8 @@ kubectl run test-pod --image=alpine --rm -it -- sh
 #### External Health Check
 
 ```bash
-# If using external access
-curl -I https://imaging-mcp-server.cotsusc1dev.solutions.corelogic.com/mcp
+ If using external access
+curl -I https://imaging-mcp-server.dev.solutions.cast.com/mcp
 ```
 
 ## Troubleshooting
@@ -775,7 +633,7 @@ helm upgrade imaging-mcp-server .
 
 ```bash
 helm upgrade imaging-mcp-server . \
-  -f values-gcp-corelogic.yaml \
+  -f values-gcp-customer.yaml \
   --set image.tag=3.4.4
 ```
 
@@ -996,8 +854,6 @@ spec:
       port: 53   # DNS
 ```
 
-## Support and Resources
-
 ### Documentation Links
 
 - [CAST Imaging Official Documentation](https://doc.castsoftware.com/display/IMAGING)
@@ -1005,59 +861,8 @@ spec:
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
 - [Helm Documentation](https://helm.sh/docs/)
 
-### Getting Help
+#### **Chart Version**: 1.1.0-beta1
 
-#### Internal Support (CoreLogic)
-
-- **Slack**: #cast-imaging-support
-- **Email**: imaging-support@corelogic.com
-- **Jira**: Create ticket in CAST-IMAGING project
-
-#### External Resources
-
-- **CAST Support**: [https://support.castsoftware.com](https://support.castsoftware.com)
-- **Kubernetes Community**: [https://kubernetes.slack.com](https://kubernetes.slack.com)
-- **Helm Community**: [https://helm.sh/community](https://helm.sh/community)
-
-### Best Practices Summary
-
-#### Production Deployment Checklist
-
-- [ ] Use specific image tags (not `latest`)
-- [ ] Configure appropriate resource limits and requests
-- [ ] Enable persistence with adequate storage size
-- [ ] Configure security contexts for non-root execution
-- [ ] Set up health checks (readiness and liveness probes)
-- [ ] Configure monitoring and alerting
-- [ ] Use namespace isolation
-- [ ] Implement network policies for security
-- [ ] Regular backup strategy for persistent data
-- [ ] Document environment-specific configurations
-- [ ] Test disaster recovery procedures
-
-#### Monitoring and Maintenance
-
-- Monitor resource usage and scale as needed
-- Regularly update to latest stable versions
-- Monitor logs for errors and performance issues
-- Backup persistent data regularly
-- Test restore procedures
-- Keep security contexts and images updated
-- Review and update resource limits based on usage patterns
-
----
-
-**Chart Version**: 1.1.0-beta1  
-**Application Version**: 3.4.3  
-**Last Updated**: September 18, 2025  
-**Maintainer**: CAST Imaging Team <imaging-support@corelogic.com>
-
-### Recent Changes (v1.1.0-beta1)
-
-- ✅ **Removed HPA**: Eliminated Horizontal Pod Autoscaler (inappropriate for stateful MCP server)
-- ✅ **Removed Custom ServiceAccount**: Now uses default ServiceAccount for better security
-- ✅ **Simplified Storage**: Single PVC approach with init container for directory organization
-- ✅ **Reduced Resource Count**: From 5 to 4 Kubernetes resources
-- ✅ **Updated Documentation**: Comprehensive guide reflecting current architecture
-- ✅ **Security Improvements**: Reduced attack surface and simplified permission model
-
+**Application Version**: 3.4.3
+**Last Updated**: September 18, 2025
+**Maintainer**: CAST Delivery Team
